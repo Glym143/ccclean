@@ -671,8 +671,6 @@ def main():
     ap.add_argument("--ds-model", default="deepseek-v4-flash", help="модель DeepSeek для резюме")
     ap.add_argument("--dry-run", action="store_true", help="показать план, ничего не менять")
     ap.add_argument("--no-backup", action="store_true", help="не создавать .bak")
-    ap.add_argument("--no-usage-fix", action="store_true",
-                    help="не уменьшать usage последнего ответа (снимает блок limit reached)")
     ap.add_argument("--force", action="store_true",
                     help="резать, даже если сессия открыта (НЕ рекомендуется)")
     ap.add_argument("-y", "--yes", action="store_true", help="не спрашивать подтверждение")
@@ -856,13 +854,12 @@ def main():
     # Находим последний ответ ассистента с usage в ОСТАВШЕЙСЯ ветке — именно его
     # счётчик читает Claude Code для проверки лимита. Уменьшим на removed_tokens.
     usage_uuid = None
-    if not args.no_usage_fix:
-        for o in reversed(chain[cut_idx:]):
-            u = o.get("message", {}).get("usage") if isinstance(o.get("message"), dict) else None
-            if o.get("type") == "assistant" and isinstance(u, dict) and usage_total(u) > 0:
-                usage_uuid = o["uuid"]
-                usage_before = usage_total(u)
-                break
+    for o in reversed(chain[cut_idx:]):
+        u = o.get("message", {}).get("usage") if isinstance(o.get("message"), dict) else None
+        if o.get("type") == "assistant" and isinstance(u, dict) and usage_total(u) > 0:
+            usage_uuid = o["uuid"]
+            usage_before = usage_total(u)
+            break
 
     # ── пересборка файла: пропускаем удаляемые uuid; корню parentUuid=null ──
     out = []
