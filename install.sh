@@ -45,9 +45,9 @@ try:
 except (OSError, json.JSONDecodeError):
     s = {}
 s.setdefault("hooks", {})
-# PreCompact на оба триггера (manual/auto)
-blocks = [{"matcher": r, "hooks": [{"type": "command", "command": cmd}]}
-          for r in ("manual", "auto")]
+# PreCompact только на АВТО-компакт. Ручной /compact не трогаем — раз человек
+# сам его запустил, значит компакт ему и нужен.
+blocks = [{"matcher": "auto", "hooks": [{"type": "command", "command": cmd}]}]
 existing = s["hooks"].get("PreCompact", [])
 # выкидываем прежние НАШИ записи (по команде), чужие сохраняем
 existing = [b for b in existing

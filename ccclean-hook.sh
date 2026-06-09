@@ -6,7 +6,8 @@
 #   2) завершает процесс claude (exit 2 блокирует сам компакт),
 # после чего обёртка `ccclaude` чистит сессию через `ccclean` и перезапускает её.
 #
-# Регистрируется в ~/.claude/settings.json на PreCompact (matcher manual+auto).
+# Регистрируется в ~/.claude/settings.json на PreCompact (matcher auto —
+# ручной /compact не перехватываем).
 INPUT=$(cat)
 LOG="$HOME/.claude/ccclean-precompact.log"
 SID=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)
