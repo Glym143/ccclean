@@ -842,7 +842,7 @@ def main():
         print(f"Бэкап: {bak}")
 
     # Находим последний ответ ассистента с usage в ОСТАВШЕЙСЯ ветке — именно его
-    # счётчик читает Claude Code для проверки лимита. Уменьшим на removed_tokens.
+    # счётчик читает Claude Code для проверки лимита.
     usage_uuid = None
     for o in reversed(chain[cut_idx:]):
         u = o.get("message", {}).get("usage") if isinstance(o.get("message"), dict) else None
@@ -850,6 +850,14 @@ def main():
             usage_uuid = o["uuid"]
             usage_before = usage_total(u)
             break
+
+    # Сколько вычесть из usage. Эмпирически: чтобы авто-компакт не сработал перед
+    # первым запросом после резюме, счётчик надо опустить заметно НИЖЕ реально
+    # срезанного — на usage_subtract (по умолч. 100k, ключ в config.json). Берём
+    # максимум из (реально срезано, usage_subtract) — это безопасно: реальный
+    # контекст после реза всё равно < лимита, сервер примет запрос.
+    usage_subtract = parse_amount(get_config().get("usage_subtract") or "100k")
+    usage_drop = max(removed_tokens, usage_subtract)
 
     # ── пересборка файла: пропускаем удаляемые uuid; корню parentUuid=null ──
     out = []
@@ -864,7 +872,7 @@ def main():
             rerooted = True
             modified = True
         if o and usage_uuid and o.get("uuid") == usage_uuid:
-            reduce_usage(o["message"]["usage"], removed_tokens)
+            reduce_usage(o["message"]["usage"], usage_drop)
             usage_after = usage_total(o["message"]["usage"])
             modified = True
         out.append(json.dumps(o, ensure_ascii=False) if modified else raw)
@@ -872,7 +880,7 @@ def main():
         f.write("\n".join(out) + "\n")
     if usage_after is not None:
         print(f"Счётчик usage последнего ответа: {usage_before:,} → {usage_after:,} "
-              f"(−{removed_tokens:,}) — снят блок limit reached")
+              f"(−{usage_drop:,}; срезано {removed_tokens:,}) — снят блок limit reached")
 
     # ── контроль целостности новой цепочки ──
     objs2 = []
