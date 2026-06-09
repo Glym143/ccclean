@@ -667,16 +667,28 @@ def main():
         path = pick_session(args.projects_dir, assume_yes=args.yes)  # интерактивный выбор
 
     # ── защита: сессия не должна быть открыта (иначе рез не применится) ──
+    # Claude Code не держит файл открытым постоянно (открыл-дописал-закрыл),
+    # поэтому lsof ненадёжен — дополнительно смотрим свежесть mtime.
     holders = session_in_use(path)
-    if holders:
-        print("⚠ Сессия СЕЙЧАС ОТКРЫТА — её держат процессы:")
+    try:
+        age = time.time() - os.path.getmtime(path)
+    except OSError:
+        age = 1e9
+    looks_live = age < 120  # файл менялся менее 2 минут назад
+    if holders or looks_live:
+        print("⚠ Похоже, сессия СЕЙЧАС ОТКРЫТА в Claude Code / VS Code:")
         for cmd, pid in holders:
-            print(f"    {cmd} (PID {pid})")
-        print("Рез не подействует: контекст в памяти процесса перезапишет файл.")
-        print("Закрой сессию в Claude Code / VS Code (и вкладку с .jsonl) и повтори.")
+            print(f"    держит процесс: {cmd} (PID {pid})")
+        if looks_live and not holders:
+            print(f"    файл менялся {int(age)} сек назад — сессия, скорее всего, активна.")
+        print("Рез НЕ подействует: живая сессия держит контекст в памяти и при")
+        print("следующем ходе перезапишет файл, затерев правки.")
+        print("→ Закрой сессию ПОЛНОСТЬЮ (чтобы процесс claude завершился), затем")
+        print("  запусти ccclean и потом `claude --resume <id>` в новом терминале.")
+        print("  Для живой переполненной сессии используй /compact прямо в ней.")
         if not args.force:
             sys.exit("Прервано. Обойти проверку (на свой риск): --force")
-        print("[--force] продолжаю несмотря на открытую сессию.\n")
+        print("[--force] продолжаю несмотря на возможную открытую сессию.\n")
 
     recs = load(path)
     objs = [o for _, o in recs if o]
