@@ -1,54 +1,76 @@
 #!/usr/bin/env bash
-# Установка ccclean как глобальной команды (вариант: симлинк в каталог из PATH).
+# Установка ccclean + ccclaude (обёртка с авто-чисткой) + хук PreCompact.
 # Запуск:  ./install.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$SCRIPT_DIR/ccclean.py"
-NAME="ccclean"
-
-if [ ! -f "$SRC" ]; then
-  echo "Не найден $SRC" >&2; exit 1
-fi
-chmod +x "$SRC"
-
-# Выбираем каталог из PATH, доступный на запись без sudo.
-TARGET_DIR=""
-for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
-  case ":$PATH:" in *":$d:"*) :;; *) continue;; esac
-  if [ -d "$d" ] && [ -w "$d" ]; then TARGET_DIR="$d"; break; fi
-done
-# Фолбэк: ~/.local/bin (создадим и подскажем добавить в PATH).
-if [ -z "$TARGET_DIR" ]; then
-  TARGET_DIR="$HOME/.local/bin"
-  mkdir -p "$TARGET_DIR"
-  echo "ВНИМАНИЕ: добавь в PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
-fi
-
-ln -sf "$SRC" "$TARGET_DIR/$NAME"
-echo "Установлено: $TARGET_DIR/$NAME -> $SRC"
-
-# Конфиг с ключами (права 600).
+HOOKS_DIR="$HOME/.claude/hooks"
+SETTINGS="$HOME/.claude/settings.json"
 CFG_DIR="$HOME/.config/ccclean"
 CFG="$CFG_DIR/config.json"
-SRC_CFG="$SCRIPT_DIR/config.json"
+
+# Выбираем каталог из PATH, доступный на запись без sudo.
+pick_bindir() {
+  local d
+  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    case ":$PATH:" in *":$d:"*) :;; *) continue;; esac
+    if [ -d "$d" ] && [ -w "$d" ]; then echo "$d"; return; fi
+  done
+  mkdir -p "$HOME/.local/bin"
+  echo "ВНИМАНИЕ: добавь в PATH: export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+  echo "$HOME/.local/bin"
+}
+BINDIR="$(pick_bindir)"
+
+# 1. Команды ccclean и ccclaude (симлинки в PATH)
+chmod +x "$SCRIPT_DIR/ccclean.py" "$SCRIPT_DIR/ccclaude.sh"
+ln -sf "$SCRIPT_DIR/ccclean.py"  "$BINDIR/ccclean"
+ln -sf "$SCRIPT_DIR/ccclaude.sh" "$BINDIR/ccclaude"
+echo "Установлено: $BINDIR/ccclean, $BINDIR/ccclaude"
+
+# 2. Хук PreCompact (копируем в ~/.claude/hooks)
+mkdir -p "$HOOKS_DIR"
+cp "$SCRIPT_DIR/ccclean-hook.sh" "$HOOKS_DIR/ccclean-hook.sh"
+chmod +x "$HOOKS_DIR/ccclean-hook.sh"
+echo "Хук: $HOOKS_DIR/ccclean-hook.sh"
+
+# 3. Регистрация хука в settings.json + включение авто-компакта (идемпотентно)
+mkdir -p "$(dirname "$SETTINGS")"
+HOOK_CMD="$HOOKS_DIR/ccclean-hook.sh" python3 - "$SETTINGS" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+cmd = os.environ["HOOK_CMD"]
+try:
+    with open(path) as f: s = json.load(f)
+except (OSError, json.JSONDecodeError):
+    s = {}
+s.setdefault("hooks", {})
+# PreCompact на оба триггера (manual/auto)
+blocks = [{"matcher": r, "hooks": [{"type": "command", "command": cmd}]}
+          for r in ("manual", "auto")]
+existing = s["hooks"].get("PreCompact", [])
+# выкидываем прежние НАШИ записи (по команде), чужие сохраняем
+existing = [b for b in existing
+           if not any(h.get("command") == cmd for h in b.get("hooks", []))]
+s["hooks"]["PreCompact"] = existing + blocks
+s["autoCompactEnabled"] = True   # нужно, чтобы PreCompact(auto) срабатывал сам
+with open(path, "w") as f:
+    json.dump(s, f, ensure_ascii=False, indent=2)
+print("settings.json: PreCompact-хук зарегистрирован, autoCompactEnabled=true")
+PY
+
+# 4. Конфиг с ключами (права 600)
 mkdir -p "$CFG_DIR"
 if [ -f "$CFG" ]; then
   echo "Конфиг уже есть, не трогаю: $CFG"
-elif [ -f "$SRC_CFG" ]; then
-  # рядом лежит config.json с ключами — копируем его в нужное место
-  cp "$SRC_CFG" "$CFG"
-  chmod 600 "$CFG"
-  echo "Конфиг скопирован из папки: $SRC_CFG -> $CFG"
+elif [ -f "$SCRIPT_DIR/config.json" ]; then
+  cp "$SCRIPT_DIR/config.json" "$CFG"; chmod 600 "$CFG"
+  echo "Конфиг скопирован: $CFG"
 else
-  cat > "$CFG" <<'JSON'
-{
-  "deepseek_api_key": "",
-  "anthropic_api_key": ""
-}
-JSON
-  chmod 600 "$CFG"
-  echo "Создан пустой конфиг: $CFG — впиши deepseek_api_key и anthropic_api_key"
+  cp "$SCRIPT_DIR/config.example.json" "$CFG"; chmod 600 "$CFG"
+  echo "Создан конфиг из шаблона: $CFG — впиши ключи deepseek_api_key и anthropic_api_key"
 fi
 
-echo "Готово. Проверь: $NAME --help"
+echo
+echo "Готово. Перезапусти Claude Code, чтобы хук подхватился."
+echo "Запускай сессии через:  ccclaude --resume <session-id>   (в терминале, не VS Code)"
