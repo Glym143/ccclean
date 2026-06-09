@@ -9,7 +9,18 @@
 # Размер среза за один раз задаётся переменной CCCLEAN_FREE (по умолчанию 10k):
 #   CCCLEAN_FREE=300k ccclaude --resume <session-id>
 MARKER="$HOME/.claude/ccclean-pending"
-FREE="${CCCLEAN_FREE:-10k}"   # сколько токенов срезать за один раз
+# Сколько срезать за один раз. Приоритет: env CCCLEAN_FREE → config.json
+# ("default_free") → 10k. Так значение легко поменять в конфиге раз и навсегда.
+FREE="${CCCLEAN_FREE:-}"
+if [ -z "$FREE" ]; then
+  FREE=$(python3 -c 'import json,os
+try:
+    v=json.load(open(os.path.expanduser("~/.config/ccclean/config.json"))).get("default_free")
+    print(v or "")
+except Exception:
+    print("")' 2>/dev/null)
+fi
+FREE="${FREE:-10k}"
 rm -f "$MARKER"
 ARGS=("$@")
 while true; do

@@ -142,10 +142,17 @@ ccclaude --resume <session-id>      # вместо `claude --resume <session-id>
 3. Обёртка `ccclaude` видит метку → ждёт ~2с → `ccclean <id> 10k --force` →
    перезапускает `claude --resume <id>`.
 
-Размер среза за цикл — переменная `CCCLEAN_FREE` (по умолчанию `10k`):
+Размер среза за цикл задаётся (по приоритету):
+1. переменная `CCCLEAN_FREE` (разово),
+2. ключ `default_free` в `~/.config/ccclean/config.json` (постоянно),
+3. дефолт `10k`.
 
 ```bash
 CCCLEAN_FREE=300k ccclaude --resume <id>   # разово разгрузить переполненную сессию
+```
+```json
+// ~/.config/ccclean/config.json — поменять дефолт раз и навсегда
+{ "default_free": "30k" }
 ```
 
 **Ограничения:**
