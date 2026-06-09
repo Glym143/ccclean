@@ -685,9 +685,10 @@ def main():
         else:
             session = a
 
-    # Объём: приоритет у --free/--keep, затем позиционный, затем дефолт 10k.
+    # Объём: приоритет у --free/--keep, затем позиционный, затем default_free
+    # из ~/.config/ccclean/config.json, затем 10k.
     if not args.free and not args.keep:
-        args.free = pos_amount or "10k"
+        args.free = pos_amount or get_config().get("default_free") or "10k"
 
     if session:
         path = resolve_path(session, args.projects_dir)
