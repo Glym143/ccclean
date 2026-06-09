@@ -391,6 +391,26 @@ def resolve_path(session, projects_dir):
     return matches[0]
 
 
+def session_in_use(path):
+    """Процессы, держащие файл сессии открытым (через lsof).
+    Если сессию держит Claude Code / VS Code — рез не применится: контекст
+    в памяти процесса перезапишет файл. Возвращает список (команда, PID)."""
+    if not shutil.which("lsof"):
+        return []
+    try:
+        r = subprocess.run(["lsof", "--", path], capture_output=True,
+                            text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    procs, seen = [], set()
+    for line in r.stdout.splitlines()[1:]:  # пропускаем заголовок
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] not in seen:
+            seen.add(parts[1])
+            procs.append((parts[0], parts[1]))
+    return procs
+
+
 def session_title(path):
     """Заголовок сессии: текст первого осмысленного сообщения пользователя
     (или summary-записи), пропуская служебные caveat-блоки."""
@@ -623,6 +643,8 @@ def main():
     ap.add_argument("--ds-model", default="deepseek-v4-flash", help="модель DeepSeek для резюме")
     ap.add_argument("--dry-run", action="store_true", help="показать план, ничего не менять")
     ap.add_argument("--no-backup", action="store_true", help="не создавать .bak")
+    ap.add_argument("--force", action="store_true",
+                    help="резать, даже если сессия открыта (НЕ рекомендуется)")
     ap.add_argument("-y", "--yes", action="store_true", help="не спрашивать подтверждение")
     args = ap.parse_args()
 
@@ -643,6 +665,19 @@ def main():
         path = resolve_path(session, args.projects_dir)
     else:
         path = pick_session(args.projects_dir, assume_yes=args.yes)  # интерактивный выбор
+
+    # ── защита: сессия не должна быть открыта (иначе рез не применится) ──
+    holders = session_in_use(path)
+    if holders:
+        print("⚠ Сессия СЕЙЧАС ОТКРЫТА — её держат процессы:")
+        for cmd, pid in holders:
+            print(f"    {cmd} (PID {pid})")
+        print("Рез не подействует: контекст в памяти процесса перезапишет файл.")
+        print("Закрой сессию в Claude Code / VS Code (и вкладку с .jsonl) и повтори.")
+        if not args.force:
+            sys.exit("Прервано. Обойти проверку (на свой риск): --force")
+        print("[--force] продолжаю несмотря на открытую сессию.\n")
+
     recs = load(path)
     objs = [o for _, o in recs if o]
     chain, _ = active_chain(objs)
