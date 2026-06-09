@@ -597,6 +597,34 @@ def latest_usage_tokens(objs):
             + last.get("cache_creation_input_tokens", 0))
 
 
+def reduce_usage(u, amount):
+    """Уменьшает счётчик токенов в usage-словаре на amount (вычитаем из самых
+    крупных составляющих: cache_read → cache_creation → input). Зеркалит в
+    iterations[]. Это снимает блок «context limit reached» у Claude Code, который
+    читает usage последнего ответа, а не пересчитывает урезанные сообщения."""
+    def _sub(d, left):
+        for k in ("cache_read_input_tokens", "cache_creation_input_tokens",
+                  "input_tokens"):
+            if left <= 0:
+                break
+            v = d.get(k, 0)
+            take = min(v, left)
+            d[k] = v - take
+            left -= take
+        return left
+    _sub(u, amount)
+    for it in u.get("iterations", []) or []:
+        if isinstance(it, dict):
+            _sub(it, amount)
+
+
+def usage_total(u):
+    """Сумма токенов контекста в usage-словаре (как считает Claude Code)."""
+    return (u.get("input_tokens", 0)
+            + u.get("cache_read_input_tokens", 0)
+            + u.get("cache_creation_input_tokens", 0))
+
+
 def detect_model(objs, default="claude-opus-4-8"):
     """Достаёт id модели из записей сессии (для точного подсчёта через API)."""
     for o in objs:
@@ -643,6 +671,8 @@ def main():
     ap.add_argument("--ds-model", default="deepseek-v4-flash", help="модель DeepSeek для резюме")
     ap.add_argument("--dry-run", action="store_true", help="показать план, ничего не менять")
     ap.add_argument("--no-backup", action="store_true", help="не создавать .bak")
+    ap.add_argument("--no-usage-fix", action="store_true",
+                    help="не уменьшать usage последнего ответа (снимает блок limit reached)")
     ap.add_argument("--force", action="store_true",
                     help="резать, даже если сессия открыта (НЕ рекомендуется)")
     ap.add_argument("-y", "--yes", action="store_true", help="не спрашивать подтверждение")
@@ -823,20 +853,39 @@ def main():
         shutil.copy2(path, bak)
         print(f"Бэкап: {bak}")
 
+    # Находим последний ответ ассистента с usage в ОСТАВШЕЙСЯ ветке — именно его
+    # счётчик читает Claude Code для проверки лимита. Уменьшим на removed_tokens.
+    usage_uuid = None
+    if not args.no_usage_fix:
+        for o in reversed(chain[cut_idx:]):
+            u = o.get("message", {}).get("usage") if isinstance(o.get("message"), dict) else None
+            if o.get("type") == "assistant" and isinstance(u, dict) and usage_total(u) > 0:
+                usage_uuid = o["uuid"]
+                usage_before = usage_total(u)
+                break
+
     # ── пересборка файла: пропускаем удаляемые uuid; корню parentUuid=null ──
     out = []
     rerooted = False  # на случай дубля uuid переподшиваем только первую запись
+    usage_after = None
     for raw, o in recs:
         if o and o.get("uuid") in remove:
             continue
+        modified = False
         if o and not rerooted and o.get("uuid") == new_root["uuid"]:
             o["parentUuid"] = None
             rerooted = True
-            out.append(json.dumps(o, ensure_ascii=False))
-        else:
-            out.append(raw)
+            modified = True
+        if o and usage_uuid and o.get("uuid") == usage_uuid:
+            reduce_usage(o["message"]["usage"], removed_tokens)
+            usage_after = usage_total(o["message"]["usage"])
+            modified = True
+        out.append(json.dumps(o, ensure_ascii=False) if modified else raw)
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(out) + "\n")
+    if usage_after is not None:
+        print(f"Счётчик usage последнего ответа: {usage_before:,} → {usage_after:,} "
+              f"(−{removed_tokens:,}) — снят блок limit reached")
 
     # ── контроль целостности новой цепочки ──
     objs2 = []
