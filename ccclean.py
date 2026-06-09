@@ -565,9 +565,11 @@ def active_chain(objs):
     """Восстанавливает активную цепочку от самого позднего листа к корню."""
     by_uuid = {o["uuid"]: o for o in objs if o.get("uuid")}
     children = {o.get("parentUuid") for o in objs if o.get("parentUuid")}
-    leaves = [o for o in objs
-              if o.get("uuid") and o["uuid"] not in children
-              and o.get("type") in ("user", "assistant")]
+    # Лист — любой uuid без потомков. Хук-плагины (OpenIsland и т.п.)
+    # вешают за каждым сообщением attachment-узел (hook_success), поэтому
+    # сам по себе user/assistant листом перестаёт быть; идём от attachment-листа
+    # назад по parentUuid — цепочка корректно соберётся через user/assistant.
+    leaves = [o for o in objs if o.get("uuid") and o["uuid"] not in children]
     if not leaves:
         sys.exit("Не найдено ни одного листа диалога — файл пуст или повреждён.")
     leaf = sorted(leaves, key=lambda o: o.get("timestamp") or "")[-1]
