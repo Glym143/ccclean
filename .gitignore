@@ -1,0 +1,18 @@
+# Секреты — НИКОГДА не коммитить
+config.json
+*.env
+.env
+
+# Бэкапы сессий (содержат копии диалогов)
+*.bak-*
+*.jsonl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Системное
+.DS_Store
