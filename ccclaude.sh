@@ -14,17 +14,26 @@
 export CCCLEAN_WRAPPED=1
 MARKER="$HOME/.claude/ccclean-pending"
 
-# базовый объём
-base_free() {
-  if [ -n "${CCCLEAN_FREE:-}" ]; then echo "$CCCLEAN_FREE"; return; fi
+# значение из config.json по ключу (с дефолтом)
+cfg_get() {  # $1=ключ, $2=дефолт
   local v
-  v=$(python3 -c 'import json,os
+  v=$(python3 -c "import json,os
 try:
-    print(json.load(open(os.path.expanduser("~/.config/ccclean/config.json"))).get("default_free") or "")
+    print(json.load(open(os.path.expanduser('~/.config/ccclean/config.json'))).get('$1') or '')
 except Exception:
-    print("")' 2>/dev/null)
-  echo "${v:-10k}"
+    print('')" 2>/dev/null)
+  echo "${v:-$2}"
 }
+
+# базовый объём среза
+base_free() {
+  [ -n "${CCCLEAN_FREE:-}" ] && { echo "$CCCLEAN_FREE"; return; }
+  cfg_get default_free 10k
+}
+
+# Промпт, который автоматически отправляется после перезапуска (config.json
+# "resume_prompt", по умолч. "continue"). Пусто → просто резюм без отправки.
+RESUME_PROMPT="$(cfg_get resume_prompt continue)"
 
 rm -f "$MARKER"
 ARGS=("$@")
@@ -50,5 +59,9 @@ while true; do
   sleep 2   # дать claude полностью закрыться и отпустить файл сессии
   ccclean "$SID" "$FREE" -y --no-summary --force || { echo "ccclean не смог"; break; }
   echo "↻  Перезапускаю сессию $SID…"
-  ARGS=(--resume "$SID")
+  if [ -n "$RESUME_PROMPT" ]; then
+    ARGS=(--resume "$SID" "$RESUME_PROMPT")   # резюм + автоотправка промпта
+  else
+    ARGS=(--resume "$SID")
+  fi
 done

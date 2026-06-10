@@ -79,7 +79,7 @@ CFG="$CFG" SRC_CFG="$SRC_CFG" python3 - <<'PY'
 import json, os
 cfg = os.environ["CFG"]; src = os.environ["SRC_CFG"]
 defaults = {"deepseek_api_key": "", "anthropic_api_key": "",
-            "default_free": "30k", "usage_subtract": "200k", "clean_at": "940k"}
+            "default_free": "30k", "usage_subtract": "200k", "clean_at": "940k", "resume_prompt": "continue"}
 try:
     with open(src) as f: defaults.update({k: v for k, v in json.load(f).items()})
 except Exception:
