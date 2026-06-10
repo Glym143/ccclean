@@ -562,21 +562,47 @@ def load(path):
 
 
 def active_chain(objs):
-    """Восстанавливает активную цепочку от самого позднего листа к корню."""
+    """Восстанавливает активную цепочку диалога (лист → корень).
+
+    Лист выбираем как сам Claude Code — по leafUuid из последней записи last-prompt;
+    фолбэк — самый поздний лист по времени. Защита: если выбранная цепочка
+    подозрительно короткая (наткнулись на изолированный узел после многих чисток),
+    берём самую длинную из всех — это и есть настоящий диалог."""
     by_uuid = {o["uuid"]: o for o in objs if o.get("uuid")}
+
+    def walk(leaf):
+        chain, cur, seen = [], leaf, set()
+        while cur and cur.get("uuid") not in seen:
+            seen.add(cur["uuid"])
+            chain.append(cur)
+            cur = by_uuid.get(cur.get("parentUuid"))
+        chain.reverse()
+        return chain
+
     children = {o.get("parentUuid") for o in objs if o.get("parentUuid")}
     leaves = [o for o in objs
               if o.get("uuid") and o["uuid"] not in children
               and o.get("type") in ("user", "assistant")]
     if not leaves:
         sys.exit("Не найдено ни одного листа диалога — файл пуст или повреждён.")
-    leaf = sorted(leaves, key=lambda o: o.get("timestamp") or "")[-1]
-    chain, cur, seen = [], leaf, set()
-    while cur and cur.get("uuid") not in seen:
-        seen.add(cur["uuid"])
-        chain.append(cur)
-        cur = by_uuid.get(cur.get("parentUuid"))
-    chain.reverse()
+
+    # 1) лист по last-prompt.leafUuid (как определяет текущий узел сам CC)
+    leaf = None
+    for o in objs:
+        if o.get("type") == "last-prompt" and o.get("leafUuid") in by_uuid:
+            leaf = by_uuid[o["leafUuid"]]   # последний по порядку файла
+    # 2) фолбэк — самый поздний лист по времени
+    if leaf is None:
+        leaf = sorted(leaves, key=lambda o: o.get("timestamp") or "")[-1]
+
+    chain = walk(leaf)
+    # 3) защита от изолированного узла: если цепочка крошечная, а есть длиннее —
+    #    берём самую длинную (настоящий диалог)
+    msgs = sum(1 for o in chain if o.get("type") in ("user", "assistant"))
+    if msgs < 5:
+        longest = max((walk(lf) for lf in leaves), key=len)
+        if len(longest) > len(chain):
+            chain = longest
     return chain, by_uuid
 
 
