@@ -856,7 +856,7 @@ def main():
     # срезанного — на usage_subtract (по умолч. 100k, ключ в config.json). Берём
     # максимум из (реально срезано, usage_subtract) — это безопасно: реальный
     # контекст после реза всё равно < лимита, сервер примет запрос.
-    usage_subtract = parse_amount(get_config().get("usage_subtract") or "100k")
+    usage_subtract = parse_amount(get_config().get("usage_subtract") or "200k")
     usage_drop = max(removed_tokens, usage_subtract)
 
     # ── пересборка файла: пропускаем удаляемые uuid; корню parentUuid=null ──
