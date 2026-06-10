@@ -4,5 +4,6 @@
   "default_free": "30k",
   "usage_subtract": "200k",
   "clean_at": "940k",
-  "resume_prompt": "continue"
+  "resume_prompt": "continue",
+  "loop_free": "10k"
 }

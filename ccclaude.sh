@@ -7,8 +7,8 @@
 # `ccclean` (срезает старые сообщения + правит usage) и перезапускает её.
 #
 # Базовый размер среза: env CCCLEAN_FREE → config.json "default_free" → 10k.
-# Если после чистки сессия СРАЗУ снова за лимитом (цикл), срез эскалируется
-# по лестнице, чтобы выйти из лимита за 2-3 круга, а не за десяток.
+# Если после чистки сессия СРАЗУ снова за лимитом (цикл, < 90с), режем по
+# loop_free (config, по умолч. 10k) — небольшими шагами, пока не выйдем из лимита.
 # Метка: хуки авто-чистки (Stop/PreCompact) действуют ТОЛЬКО в сессиях,
 # запущенных через эту обёртку — иначе они бы убивали любые сессии Claude Code.
 export CCCLEAN_WRAPPED=1
@@ -35,11 +35,11 @@ base_free() {
 # Промпт, который автоматически отправляется после перезапуска (config.json
 # "resume_prompt", по умолч. "continue"). Пусто → просто резюм без отправки.
 RESUME_PROMPT="$(cfg_get resume_prompt continue)"
+# Объём при зацикливании (повторная чистка подряд): config "loop_free", по умолч. 10k.
+LOOP_FREE="$(cfg_get loop_free 10k)"
 
 rm -f "$MARKER"
 ARGS=("$@")
-LADDER=(50k 150k 400k 800k)   # эскалация при зацикливании
-step=0
 last=0
 while true; do
   claude "${ARGS[@]}"
@@ -47,11 +47,10 @@ while true; do
   SID="$(cat "$MARKER")"; rm -f "$MARKER"
 
   now=$(date +%s)
-  if [ $((now - last)) -lt 90 ]; then   # снова чистим почти сразу → цикл → эскалируем
-    FREE="${LADDER[$step]:-${LADDER[${#LADDER[@]}-1]}}"
-    [ $step -lt $((${#LADDER[@]}-1)) ] && step=$((step+1))
-  else                                  # нормальный одиночный случай → базовый объём
-    FREE="$(base_free)"; step=0
+  if [ $((now - last)) -lt 90 ]; then   # снова чистим почти сразу → цикл → режем по loop_free
+    FREE="$LOOP_FREE"
+  else                                  # первая/одиночная чистка → базовый объём
+    FREE="$(base_free)"
   fi
   last=$now
 
