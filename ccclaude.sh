@@ -58,8 +58,7 @@ while true; do
   echo ""
   echo "♻️  Контекст был полон — чищу сессию $SID (срезаю $FREE)…"
   sleep 2   # дать claude полностью закрыться и отпустить файл сессии
-  ccclean "$SID" "$FREE" -y --no-summary --force \
-    || echo "⚠ ccclean не смог — всё равно перезапускаю сессию (без чистки)"
+  ccclean "$SID" "$FREE" -y --no-summary --force || { echo "ccclean не смог"; break; }
   echo "↻  Перезапускаю сессию $SID…"
   ARGS=(--resume "$SID")
   # восстановить уровень рассуждений, если хук его сохранил
