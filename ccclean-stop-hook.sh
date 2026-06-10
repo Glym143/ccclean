@@ -39,8 +39,12 @@ dbg "THRESH=$THRESH"
 
 SID=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)
 TR=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("transcript_path",""))' 2>/dev/null)
-dbg "SID=$SID TR=$TR exists=$([ -f "$TR" ] && echo yes || echo no)"
-{ [ -z "$TR" ] || [ ! -f "$TR" ]; } && { dbg "выход: нет transcript_path"; exit 0; }
+# если путь не дали — ищем транскрипт по session_id в ~/.claude/projects
+if { [ -z "$TR" ] || [ ! -f "$TR" ]; } && [ -n "$SID" ]; then
+  TR=$(ls -t "$HOME/.claude/projects"/*/"$SID".jsonl 2>/dev/null | head -1)
+fi
+dbg "SID=$SID TR=$TR exists=$([ -n "$TR" ] && [ -f "$TR" ] && echo yes || echo no)"
+{ [ -z "$TR" ] || [ ! -f "$TR" ]; } && { dbg "выход: транскрипт не найден (ни в INPUT, ни по session_id)"; exit 0; }
 
 # текущий usage = сумма последней usage-записи (как latest_usage_tokens)
 USAGE=$(python3 - "$TR" <<'PY' 2>/dev/null
