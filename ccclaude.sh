@@ -63,7 +63,16 @@ while true; do
   # восстановить уровень рассуждений, если хук его сохранил
   if [ -f "$EFFORT_FILE" ]; then
     EFF="$(cat "$EFFORT_FILE")"; rm -f "$EFFORT_FILE"
-    [ -n "$EFF" ] && ARGS+=(--effort "$EFF")
+    if [ -n "$EFF" ]; then
+      ARGS+=(--effort "$EFF")
+      # надёжно: пишем уровень в settings.json — CC берёт effortLevel при резюме
+      EFF="$EFF" python3 -c "import json, os
+p = os.path.expanduser('~/.claude/settings.json')
+try:    d = json.load(open(p))
+except Exception: d = {}
+d['effortLevel'] = os.environ['EFF']
+json.dump(d, open(p, 'w'), ensure_ascii=False, indent=2)" 2>/dev/null
+    fi
   fi
   [ -n "$RESUME_PROMPT" ] && ARGS+=("$RESUME_PROMPT")   # автоотправка промпта
 done
