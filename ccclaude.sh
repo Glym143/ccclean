@@ -13,6 +13,7 @@
 # запущенных через эту обёртку — иначе они бы убивали любые сессии Claude Code.
 export CCCLEAN_WRAPPED=1
 MARKER="$HOME/.claude/ccclean-pending"
+EFFORT_FILE="$HOME/.claude/ccclean-effort"   # уровень рассуждений, сохранённый хуком
 
 # значение из config.json по ключу (с дефолтом)
 cfg_get() {  # $1=ключ, $2=дефолт
@@ -59,9 +60,11 @@ while true; do
   sleep 2   # дать claude полностью закрыться и отпустить файл сессии
   ccclean "$SID" "$FREE" -y --no-summary --force || { echo "ccclean не смог"; break; }
   echo "↻  Перезапускаю сессию $SID…"
-  if [ -n "$RESUME_PROMPT" ]; then
-    ARGS=(--resume "$SID" "$RESUME_PROMPT")   # резюм + автоотправка промпта
-  else
-    ARGS=(--resume "$SID")
+  ARGS=(--resume "$SID")
+  # восстановить уровень рассуждений, если хук его сохранил
+  if [ -f "$EFFORT_FILE" ]; then
+    EFF="$(cat "$EFFORT_FILE")"; rm -f "$EFFORT_FILE"
+    [ -n "$EFF" ] && ARGS+=(--effort "$EFF")
   fi
+  [ -n "$RESUME_PROMPT" ] && ARGS+=("$RESUME_PROMPT")   # автоотправка промпта
 done
