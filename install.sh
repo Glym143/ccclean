@@ -53,7 +53,10 @@ existing = s["hooks"].get("PreCompact", [])
 existing = [b for b in existing
            if not any(h.get("command") == cmd for h in b.get("hooks", []))]
 s["hooks"]["PreCompact"] = existing + blocks
-s["autoCompactEnabled"] = True   # нужно, чтобы PreCompact(auto) срабатывал сам
+s["autoCompactEnabled"] = True       # нужно, чтобы PreCompact(auto) срабатывал сам
+s["autoCompactWindow"] = 1000000     # окно на максимум → порог компакта почти у
+                                     # реального потолка (~967k для 1M-модели),
+                                     # меньше преждевременных «context limit reached»
 with open(path, "w") as f:
     json.dump(s, f, ensure_ascii=False, indent=2)
 print("settings.json: PreCompact-хук зарегистрирован, autoCompactEnabled=true")
