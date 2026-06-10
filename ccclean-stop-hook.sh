@@ -16,7 +16,7 @@ INPUT=$(cat)
 # ── диагностика: пишем, что хук видит на каждом вызове ──
 DBG="$HOME/.claude/ccclean-stop-debug.log"
 dbg(){ echo "$(date '+%F %T') $*" >> "$DBG"; }
-dbg "Stop fired. INPUT=$INPUT"
+dbg "Stop fired"
 
 # Порог из конфига → в токенах. Пусто/нет → режим выключен.
 THRESH=$(python3 - <<'PY' 2>/dev/null
