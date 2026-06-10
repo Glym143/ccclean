@@ -8,6 +8,9 @@
 #
 # Регистрируется в ~/.claude/settings.json на PreCompact (matcher auto —
 # ручной /compact не перехватываем).
+# ВАЖНО: действуем только в сессиях, запущенных через обёртку ccclaude (она
+# ставит CCCLEAN_WRAPPED=1). Иначе хук убивал бы любую сессию Claude Code.
+[ -z "${CCCLEAN_WRAPPED:-}" ] && exit 0
 INPUT=$(cat)
 LOG="$HOME/.claude/ccclean-precompact.log"
 SID=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)
