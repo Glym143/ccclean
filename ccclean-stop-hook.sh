@@ -13,6 +13,11 @@
 [ -z "${CCCLEAN_WRAPPED:-}" ] && exit 0
 INPUT=$(cat)
 
+# ── диагностика: пишем, что хук видит на каждом вызове ──
+DBG="$HOME/.claude/ccclean-stop-debug.log"
+dbg(){ echo "$(date '+%F %T') $*" >> "$DBG"; }
+dbg "Stop fired. INPUT=$INPUT"
+
 # Порог из конфига → в токенах. Пусто/нет → режим выключен.
 THRESH=$(python3 - <<'PY' 2>/dev/null
 import json, os
@@ -29,11 +34,13 @@ try: print(int(float(v) * mult))
 except Exception: print(0)
 PY
 )
-{ [ -z "$THRESH" ] || [ "$THRESH" = "0" ]; } && exit 0   # режим выключен
+dbg "THRESH=$THRESH"
+{ [ -z "$THRESH" ] || [ "$THRESH" = "0" ]; } && { dbg "выход: режим выключен (нет clean_at)"; exit 0; }
 
 SID=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)
 TR=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("transcript_path",""))' 2>/dev/null)
-{ [ -z "$TR" ] || [ ! -f "$TR" ]; } && exit 0
+dbg "SID=$SID TR=$TR exists=$([ -f "$TR" ] && echo yes || echo no)"
+{ [ -z "$TR" ] || [ ! -f "$TR" ]; } && { dbg "выход: нет transcript_path"; exit 0; }
 
 # текущий usage = сумма последней usage-записи (как latest_usage_tokens)
 USAGE=$(python3 - "$TR" <<'PY' 2>/dev/null
@@ -51,9 +58,11 @@ for l in open(sys.argv[1], encoding="utf-8", errors="replace"):
 print(last)
 PY
 )
-{ [ -z "$USAGE" ] || [ "$USAGE" = "0" ]; } && exit 0
+dbg "USAGE=$USAGE (порог $THRESH)"
+{ [ -z "$USAGE" ] || [ "$USAGE" = "0" ]; } && { dbg "выход: usage не прочитался"; exit 0; }
 
 if [ "$USAGE" -gt "$THRESH" ]; then
+  dbg "СРАБОТАЛО: usage $USAGE > $THRESH → чистка"
   LOG="$HOME/.claude/ccclean-precompact.log"
   echo "=== $(date '+%Y-%m-%d %H:%M:%S')  Stop: usage=$USAGE > clean_at=$THRESH → проактивная чистка sid=$SID ===" >> "$LOG"
   [ -n "$SID" ] && printf '%s' "$SID" > "$HOME/.claude/ccclean-pending"
