@@ -70,11 +70,6 @@ if [ "$USAGE" -gt "$THRESH" ]; then
   LOG="$HOME/.claude/ccclean-precompact.log"
   echo "=== $(date '+%Y-%m-%d %H:%M:%S')  Stop: usage=$USAGE > clean_at=$THRESH → проактивная чистка sid=$SID ===" >> "$LOG"
   [ -n "$SID" ] && printf '%s' "$SID" > "$HOME/.claude/ccclean-pending"
-  # сохранить текущий уровень рассуждений (всегда перезаписываем — даже пустым,
-  # чтобы не восстановить старое «залипшее» значение)
-  EFFORT=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("effort",{}).get("level","") or "")' 2>/dev/null)
-  printf '%s' "$EFFORT" > "$HOME/.claude/ccclean-effort"
-  dbg "effort=$EFFORT"
   # завершить процесс claude среди предков → обёртка ccclaude подхватит
   pid=$PPID
   for _ in 1 2 3 4 5 6 7 8; do

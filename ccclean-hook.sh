@@ -22,10 +22,6 @@ TRIGGER=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys
 
 # пометка для обёртки
 [ -n "$SID" ] && printf '%s' "$SID" > "$HOME/.claude/ccclean-pending"
-# сохранить текущий уровень рассуждений (всегда перезаписываем — даже пустым,
-# чтобы не восстановить старое «залипшее» значение)
-EFFORT=$(printf '%s' "$INPUT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("effort",{}).get("level","") or "")' 2>/dev/null)
-printf '%s' "$EFFORT" > "$HOME/.claude/ccclean-effort"
 
 # найти процесс claude среди предков и завершить (чтобы он вышел в обёртку)
 pid=$PPID

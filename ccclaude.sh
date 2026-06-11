@@ -13,7 +13,6 @@
 # запущенных через эту обёртку — иначе они бы убивали любые сессии Claude Code.
 export CCCLEAN_WRAPPED=1
 MARKER="$HOME/.claude/ccclean-pending"
-EFFORT_FILE="$HOME/.claude/ccclean-effort"   # уровень рассуждений, сохранённый хуком
 
 # значение из config.json по ключу (с дефолтом)
 cfg_get() {  # $1=ключ, $2=дефолт
@@ -60,19 +59,5 @@ while true; do
   ccclean "$SID" "$FREE" -y --no-summary --force || { echo "ccclean не смог"; break; }
   echo "↻  Перезапускаю сессию $SID…"
   ARGS=(--resume "$SID")
-  # восстановить уровень рассуждений, если хук его сохранил
-  if [ -f "$EFFORT_FILE" ]; then
-    EFF="$(cat "$EFFORT_FILE")"; rm -f "$EFFORT_FILE"
-    if [ -n "$EFF" ]; then
-      ARGS+=(--effort "$EFF")
-      # надёжно: пишем уровень в settings.json — CC берёт effortLevel при резюме
-      EFF="$EFF" python3 -c "import json, os
-p = os.path.expanduser('~/.claude/settings.json')
-try:    d = json.load(open(p))
-except Exception: d = {}
-d['effortLevel'] = os.environ['EFF']
-json.dump(d, open(p, 'w'), ensure_ascii=False, indent=2)" 2>/dev/null
-    fi
-  fi
   [ -n "$RESUME_PROMPT" ] && ARGS+=("$RESUME_PROMPT")   # автоотправка промпта
 done
