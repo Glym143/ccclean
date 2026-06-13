@@ -774,8 +774,8 @@ def main():
             if args.model:
                 candidates = [args.model]
             else:
-                candidates = [detect_model(objs), "claude-opus-4-8",
-                              "claude-sonnet-4-5", "claude-haiku-4-5-20251001"]
+                candidates = ["claude-opus-4-8", "claude-sonnet-4-5",
+                              "claude-haiku-4-5-20251001"]
             model = None
             for m in candidates:
                 if not m:
