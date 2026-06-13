@@ -747,7 +747,15 @@ def main():
 
     # ── выбираем счётчик ТЕКСТОВЫХ токенов и функцию префикса ──
     # По умолчанию — точный подсчёт через Anthropic API; --fast переключает на
-    # tiktoken. Если точный недоступен (нет ключа/пакета) — мягкий фолбэк.
+    # tiktoken. Если точный недоступен (нет ключа/пакета/модель не принимается) —
+    # мягкий фолбэк на tiktoken, без падения.
+    def tiktoken_prefix():
+        count_fn, desc = make_tiktoken_counter(args.yes)
+        cum = [0] * (len(texts) + 1)
+        for i, t in enumerate(texts):
+            cum[i + 1] = cum[i] + count_fn(t)
+        return (lambda k: cum[k]), desc
+
     text_prefix = None
     tok_desc = None
     if not args.fast:
@@ -759,18 +767,35 @@ def main():
             print("[!] Нет ANTHROPIC_API_KEY (env или "
                   f"{CONFIG_PATH}) — фолбэк на tiktoken (--fast).")
         else:
-            model = args.model or detect_model(objs)
             client = anthropic.Anthropic(api_key=an_key)
-            counter = ExactPrefixCounter(client, model, texts)
-            text_prefix = counter.prefix
-            tok_desc = f"официальный API count_tokens (точно, модель {model})"
+            # модель сессии может быть недоступна аккаунту для count_tokens
+            # (напр. Fable 5 → 404). Подсчёт токенов почти не зависит от модели,
+            # поэтому берём первую, которую аккаунт принимает.
+            if args.model:
+                candidates = [args.model]
+            else:
+                candidates = [detect_model(objs), "claude-opus-4-8",
+                              "claude-sonnet-4-5", "claude-haiku-4-5-20251001"]
+            model = None
+            for m in candidates:
+                if not m:
+                    continue
+                try:  # дешёвая проверка, что модель принимается
+                    client.messages.count_tokens(
+                        model=m, messages=[{"role": "user", "content": "x"}])
+                    model = m
+                    break
+                except Exception:
+                    continue
+            if model:
+                counter = ExactPrefixCounter(client, model, texts)
+                text_prefix = counter.prefix
+                tok_desc = f"официальный API count_tokens (точно, модель {model})"
+            else:
+                print("[!] ни одна модель не принята для count_tokens — фолбэк на tiktoken.")
 
-    if text_prefix is None:  # --fast или фолбэк
-        count_fn, tok_desc = make_tiktoken_counter(args.yes)
-        cum = [0] * (len(texts) + 1)
-        for i, t in enumerate(texts):
-            cum[i + 1] = cum[i] + count_fn(t)
-        text_prefix = lambda k: cum[k]
+    if text_prefix is None:  # --fast или любой фолбэк
+        text_prefix, tok_desc = tiktoken_prefix()
 
     # Итоговый префикс = текст (+thinking) + картинки.
     prefix_fn = lambda k: text_prefix(k) + img_cum[k]
