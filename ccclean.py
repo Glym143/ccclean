@@ -22,7 +22,7 @@ ccclean — обрезка контекста сессии Claude Code.
     ccclean <session-id>          # эта сессия + срез 10k
     ccclean <session-id> 30k      # эта сессия + срез 30k
     ccclean <session-id> --keep 200k     # оставить последние ~200k
-    ccclean <session-id> 50k --dry-run   # только показать план + резюме
+    ccclean <session-id> 50k --dry-run   # только показать план
     ccclean <session-id> 100k --fast     # быстрый tiktoken вместо API
 
 Объём можно задать позиционно (30k, 50000, 1.5m) или флагом --free/--keep
@@ -692,8 +692,8 @@ def main():
     ap.add_argument("--projects-dir",
                     default=os.path.expanduser("~/.claude/projects"),
                     help="папка с проектами Claude Code (по умолч. ~/.claude/projects)")
-    ap.add_argument("--no-summary", action="store_true",
-                    help="не делать саммаризацию удаляемого через DeepSeek")
+    ap.add_argument("--summary", action="store_true",
+                    help="сделать резюме удаляемого через DeepSeek (по умолчанию выключено)")
     ap.add_argument("--ds-model", default="deepseek-v4-flash", help="модель DeepSeek для резюме")
     ap.add_argument("--dry-run", action="store_true", help="показать план, ничего не менять")
     ap.add_argument("--no-backup", action="store_true", help="не создавать .bak")
@@ -857,12 +857,12 @@ def main():
           f"ts={(new_root.get('timestamp') or '')[:19]}")
     print(f"  останется ≈ {remaining:,} токенов")
 
-    # ── саммаризация удаляемого фрагмента через DeepSeek ──
-    if not args.no_summary:
+    # ── саммаризация удаляемого фрагмента через DeepSeek (только с --summary) ──
+    if args.summary:
         ds_key = get_key("DEEPSEEK_API_KEY", "deepseek_api_key")
         if not ds_key:
             print("\n[!] Ключ DeepSeek не найден (DEEPSEEK_API_KEY или "
-                  f"{CONFIG_PATH}). Резюме пропущено. Отключить: --no-summary")
+                  f"{CONFIG_PATH}). Резюме пропущено.")
         else:
             print("\nДелаю резюме удаляемого фрагмента через DeepSeek...")
             removed_texts = [texts[i] for i in range(cut_idx)]
