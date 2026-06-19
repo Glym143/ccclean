@@ -579,7 +579,10 @@ def active_chain(objs):
         chain.reverse()
         return chain
 
-    children = {o.get("parentUuid") for o in objs if o.get("parentUuid")}
+    # «Дети» считаем ТОЛЬКО по сообщениям диалога. Иначе attachment/system-записи,
+    # ссылающиеся на сообщение как на родителя, «съедают» листья → их не остаётся.
+    children = {o.get("parentUuid") for o in objs
+                if o.get("type") in ("user", "assistant") and o.get("parentUuid")}
     leaves = [o for o in objs
               if o.get("uuid") and o["uuid"] not in children
               and o.get("type") in ("user", "assistant")]
