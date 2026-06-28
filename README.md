@@ -1,60 +1,88 @@
+<div align="center">
+
 # ccclean
+
+**A surgical context cleaner for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions.**
+Trim the oldest messages from a conversation to free up the context window — with a confirmation step and an optional summary of what gets removed.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#)
+![Platform: macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)
 
-**Утилита для очистки контекста сессий Claude Code.** Удаляет старые сообщения
-с начала диалога, чтобы освободить место в окне контекста — с подтверждением и
-(опционально, флаг `--summary`) кратким резюме удаляемого фрагмента.
+**English** · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [Español](README.es.md) · [Deutsch](README.de.md)
 
-Работает напрямую с `.jsonl`-файлами сессий в `~/.claude/projects/`.
+</div>
 
 ---
 
-## Зачем это нужно
+It works directly on the `.jsonl` session files in `~/.claude/projects/`.
 
-Длинные сессии Claude Code забивают окно контекста, и работать становится
-тяжело: модель упирается в лимит, авто-компакт срабатывает не вовремя и сжимает
-всё подряд. `ccclean` даёт **точечный контроль**: ты сам решаешь, сколько токенов
-освободить и какой именно старый кусок диалога удалить — предварительно увидев
-его краткое содержание. Текущая (свежая) часть разговора остаётся нетронутой.
+## Contents
 
-В отличие от встроенного `/compact` (который сжимает весь диалог в резюме),
-`ccclean` просто **отрезает самое старое начало** активной ветки, сохраняя
-последние сообщения дословно.
-
----
-
-## Что умеет
-
-- ✂️ **Точная обрезка** — указываешь объём (`10k`, `50k`, `1.5m`), утилита срезает
-  старые сообщения с начала так, чтобы освободить **не меньше** запрошенного.
-- 🔢 **Честный подсчёт токенов** — по умолчанию через официальный Anthropic
-  `count_tokens` API (точно), либо офлайн через `tiktoken` (`--fast`). Учитывает
-  текст, `thinking`, вызовы инструментов и **картинки**.
-- 📋 **Резюме удаляемого (опционально)** — с флагом `--summary` перед удалением
-  показывает краткую сводку фрагмента (через DeepSeek), чтобы ты понял, что
-  теряешь. По умолчанию выключено.
-- 📊 **Реальная занятость окна** — показывает фактический объём контекста из логов
-  (`usage`), включая системный промпт, схемы инструментов, MCP и `CLAUDE.md`.
-- 🗂 **Интерактивный выбор сессии** — без аргументов открывает список диалогов
-  (через `fzf`, с поиском по заголовку), не нужно вспоминать id.
-- 🔓 **Снятие блока «context limit reached»** — Claude Code определяет лимит по
-  `usage` последнего ответа, а не пересчитывает урезанные сообщения. После резки
-  ccclean опускает этот счётчик на `usage_subtract` (по умолч. 200k, ключ в
-  config.json) — заметно ниже реально срезанного, чтобы авто-компакт не сработал
-  перед первым запросом после резюме. Реальный контекст всё равно < лимита, так
-  что сервер примет запрос, а Claude Code пересчитает счётчик уже по факту.
-- 💾 **Безопасность** — авто-бэкап перед каждой резкой, проверка целостности,
-  защита от удаления всего диалога, корректная переподшивка корня.
+- [Why ccclean](#why-ccclean)
+- [Features](#features)
+- [Installation](#installation)
+  - [API keys](#api-keys)
+- [Usage](#usage)
+- [Automatic cleanup (the hook + `ccclaude`)](#automatic-cleanup-the-hook--ccclaude)
+  - [Proactive mode (`clean_at`)](#proactive-mode-clean_at)
+  - [Auto-continue (`resume_prompt`)](#auto-continue-resume_prompt)
+  - [Hook safety](#hook-safety)
+- [How it works](#how-it-works)
+- [For AI agents](#for-ai-agents)
+- [Caveats](#caveats)
+- [License](#license)
 
 ---
 
-## Установка
+## Why ccclean
 
-Нужен **Python 3.8+** и `pip`. Остальное (`tiktoken`, `anthropic`, `fzf`) утилита
-доустановит сама при первом запуске.
+Long Claude Code sessions fill up the context window, and work gets harder: the
+model hits its limit, and auto-compact kicks in at the wrong moment and squashes
+everything indiscriminately. `ccclean` gives you **precise control**: you decide
+how many tokens to free and exactly which old chunk of the conversation to drop —
+after seeing a short summary of it first. The current (recent) part of the
+conversation stays untouched.
+
+Unlike the built-in `/compact` (which compresses the *entire* dialog into a
+summary), `ccclean` simply **cuts off the oldest beginning** of the active
+branch, keeping the most recent messages verbatim.
+
+---
+
+## Features
+
+- ✂️ **Precise trimming** — you specify an amount (`10k`, `50k`, `1.5m`) and the
+  tool removes old messages from the start so that it frees **at least** the
+  requested amount.
+- 🔢 **Honest token counting** — by default through the official Anthropic
+  `count_tokens` API (exact), or offline via `tiktoken` (`--fast`). It accounts
+  for text, `thinking`, tool calls, and **images**.
+- 📋 **Summary of what's removed (optional)** — with the `--summary` flag, before
+  deleting anything it shows a short summary of the chunk (via DeepSeek) so you
+  understand what you're losing. Off by default.
+- 📊 **Real window usage** — shows the actual context size from the logs
+  (`usage`), including the system prompt, tool schemas, MCP, and `CLAUDE.md`.
+- 🗂 **Interactive session picker** — with no arguments it opens a list of
+  conversations (via `fzf`, searchable by title), so you don't have to remember
+  the id.
+- 🔓 **Lifts the "context limit reached" block** — Claude Code determines the
+  limit from the `usage` of the last response rather than recounting the trimmed
+  messages. After a cut, ccclean lowers that counter by `usage_subtract`
+  (default `200k`, a key in `config.json`) — noticeably below what was actually
+  removed, so auto-compact doesn't fire before the first request after cleanup.
+  The real context is still below the limit, so the server accepts the request,
+  and Claude Code recounts the counter from the actual data.
+- 💾 **Safety** — an automatic backup before every cut, an integrity check,
+  protection against deleting the whole dialog, and correct re-stitching of the
+  root.
+
+---
+
+## Installation
+
+You need **Python 3.8+** and `pip`. Everything else (`tiktoken`, `anthropic`,
+`fzf`) the tool installs itself on first run.
 
 ```bash
 git clone https://github.com/Glym143/ccclean.git
@@ -63,17 +91,19 @@ cd ccclean
 ```
 
 `install.sh`:
-- делает `ccclean.py` исполняемым;
-- создаёт симлинк `ccclean` в первом доступном каталоге из `PATH`
-  (`/opt/homebrew/bin`, `/usr/local/bin` или `~/.local/bin`) — без sudo;
-- создаёт конфиг `~/.config/ccclean/config.json` (права `600`).
 
-> Если выбран `~/.local/bin`, а его нет в `PATH` — добавь в `~/.zshrc`/`~/.bashrc`:
+- makes `ccclean.py` executable;
+- creates a `ccclean` symlink in the first writable directory on your `PATH`
+  (`/opt/homebrew/bin`, `/usr/local/bin`, or `~/.local/bin`) — no sudo;
+- creates the config `~/.config/ccclean/config.json` (mode `600`).
+
+> If `~/.local/bin` is chosen but it isn't on your `PATH`, add this to
+> `~/.zshrc` / `~/.bashrc`:
 > `export PATH="$HOME/.local/bin:$PATH"`
 
-### Ключи API
+### API keys
 
-Впиши ключи в `~/.config/ccclean/config.json`:
+Put your keys in `~/.config/ccclean/config.json`:
 
 ```json
 {
@@ -82,39 +112,40 @@ cd ccclean
 }
 ```
 
-- **`anthropic_api_key`** — точный подсчёт токенов (режим по умолчанию).
-  Получить: <https://console.anthropic.com/> → API Keys.
-- **`deepseek_api_key`** — резюме удаляемого фрагмента.
-  Получить: <https://platform.deepseek.com/> → API Keys.
+- **`anthropic_api_key`** — exact token counting (the default mode).
+  Get one at <https://console.anthropic.com/> → API Keys.
+- **`deepseek_api_key`** — summaries of the removed chunk.
+  Get one at <https://platform.deepseek.com/> → API Keys.
 
-Можно задать переменными окружения (имеют приоритет):
+You can also set them via environment variables (which take priority):
 `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`.
 
-Без ключа Anthropic — авто-фолбэк на офлайн `tiktoken` (приблизительно).
-Без ключа DeepSeek — резюме пропускается.
+Without an Anthropic key it auto-falls back to offline `tiktoken` (approximate).
+Without a DeepSeek key the summary is skipped.
 
 ---
 
-## Использование
+## Usage
 
 ```bash
-ccclean                       # выбрать сессию из списка + срезать 10k (по умолчанию)
-ccclean 30k                   # выбрать сессию + срезать 30k
-ccclean <session-id>          # конкретная сессия + срезать 10k
-ccclean <session-id> 30k      # конкретная сессия + срезать 30k
-ccclean <session-id> --keep 200k     # оставить последние ~200k токенов
-ccclean <session-id> 50k --dry-run   # показать план, ничего не менять
-ccclean <session-id> 100k --fast     # быстрый офлайн-подсчёт (tiktoken)
+ccclean                       # pick a session from the list + free 50k (default)
+ccclean 30k                   # pick a session + free 30k
+ccclean <session-id>          # a specific session + free the default amount
+ccclean <session-id> 30k      # a specific session + free 30k
+ccclean <session-id> --keep 200k     # keep roughly the last 200k tokens
+ccclean <session-id> 50k --dry-run   # show the plan, change nothing
+ccclean <session-id> 100k --fast     # fast offline counting (tiktoken)
 ```
 
-Объём — позиционно (`30k`, `50000`, `1.5m`) или флагом `--free`/`--keep`
-(флаг приоритетнее). Порядок аргументов не важен. `session-id` можно указывать
-сокращённо (как в списке выбора). Полный список флагов: `ccclean -h`.
+The amount is positional (`30k`, `50000`, `1.5m`) or a flag, `--free` / `--keep`
+(the flag wins). Argument order doesn't matter. The `session-id` can be
+abbreviated (as in the picker list). For the full list of flags: `ccclean -h`.
 
-Если объём не указан, берётся `default_free` из `~/.config/ccclean/config.json`
-(по умолчанию `10k`) — поменяй там, чтобы сменить дефолт раз и навсегда.
+If no amount is given, it uses `default_free` from `~/.config/ccclean/config.json`
+(installed as `50k`; the built-in fallback if there is no config is `10k`) —
+change it there to set your default once and for all.
 
-После очистки возобнови сессию:
+After cleanup, resume the session:
 
 ```bash
 claude --resume <session-id>
@@ -122,143 +153,155 @@ claude --resume <session-id>
 
 ---
 
-## Авто-чистка при заполнении контекста (хук + `ccclaude`)
+## Automatic cleanup (the hook + `ccclaude`)
 
-Чтобы не чистить вручную, есть автоматический режим: когда контекст заполняется
-и Claude Code запускает компакт, хук перехватывает его и вместо лоссового сжатия
-запускает `ccclean`, после чего сессия перезапускается уже разгруженной.
+To avoid cleaning by hand, there's an automatic mode: when the context fills up
+and Claude Code launches a compact, the hook intercepts it and, instead of lossy
+compression, runs `ccclean`, after which the session restarts already unloaded.
 
-`install.sh` настраивает это сам:
-- ставит команду-обёртку **`ccclaude`**;
-- кладёт хук `~/.claude/hooks/ccclean-hook.sh`;
-- регистрирует его в `~/.claude/settings.json` на событие `PreCompact`
-  только для **авто**-компакта (ручной `/compact` не трогаем — раз ты сам его
-  запустил, значит компакт тебе и нужен);
-- включает `autoCompactEnabled: true` (нужно, чтобы хук срабатывал сам);
-- ставит `autoCompactWindow: 1000000` — поднимает порог авто-компакта почти к
-  реальному потолку модели (Claude Code считает порог как `окно − ~33k`), чтобы
-  «context limit reached» не срабатывал преждевременно.
+`install.sh` sets this up for you:
 
-> Как это устроено внутри Claude Code (из реверса бандла): блок наступает, когда
-> счётчик `usage` последнего ответа ≥ `автокомпакт-окно − резерв_вывода(≤20k) −
-> 13k`. Поэтому помогают два рычага: поднять окно (`autoCompactWindow`, делает
-> install.sh) и опустить счётчик после чистки (`usage_subtract`, делает ccclean).
+- installs the wrapper command **`ccclaude`**;
+- places the hook at `~/.claude/hooks/ccclean-hook.sh`;
+- registers it in `~/.claude/settings.json` for the `PreCompact` event, but only
+  for **auto**-compact (manual `/compact` is left alone — if you ran it
+  yourself, then a compact is what you wanted);
+- enables `autoCompactEnabled: true` (required for the hook to fire on its own);
+- sets `autoCompactWindow: 1000000` — raising the auto-compact threshold close to
+  the model's real ceiling (Claude Code computes the threshold as
+  `window − ~33k`), so "context limit reached" doesn't fire prematurely.
 
-**Как пользоваться:** запускай Claude Code через обёртку (в терминале):
+> How it works inside Claude Code (from reversing the bundle): the block hits
+> when the `usage` of the last response is ≥ `auto-compact-window −
+> output_reserve(≤20k) − 13k`. So two levers help: raise the window
+> (`autoCompactWindow`, done by install.sh) and lower the counter after cleanup
+> (`usage_subtract`, done by ccclean).
 
-```bash
-ccclaude --resume <session-id>      # вместо `claude --resume <session-id>`
-```
-
-Цикл при заполнении:
-1. Claude Code упирается в лимит → запускает авто-компакт.
-2. Хук `ccclean-hook.sh` помечает сессию и завершает `claude` (компакт отменён).
-3. Обёртка `ccclaude` видит метку → ждёт ~2с → `ccclean <id> --force` →
-   перезапускает и сразу отправляет промпт: `claude --resume <id> "continue"`.
-
-Размер среза за цикл задаётся (по приоритету):
-1. переменная `CCCLEAN_FREE` (разово),
-2. ключ `default_free` в `~/.config/ccclean/config.json` (постоянно),
-3. дефолт `10k`.
+**How to use it:** launch Claude Code through the wrapper (in a terminal):
 
 ```bash
-CCCLEAN_FREE=300k ccclaude --resume <id>   # разово разгрузить переполненную сессию
+ccclaude --resume <session-id>      # instead of `claude --resume <session-id>`
 ```
+
+The cycle when it fills up:
+
+1. Claude Code hits the limit → launches auto-compact.
+2. The hook `ccclean-hook.sh` marks the session and ends `claude` (compact
+   cancelled).
+3. The `ccclaude` wrapper sees the mark → waits ~2s → `ccclean <id> --force` →
+   restarts and immediately sends the prompt: `claude --resume <id> "continue"`.
+
+The cut size per cycle is set (in priority order):
+
+1. the `CCCLEAN_FREE` environment variable (one-off),
+2. the `default_free` key in `~/.config/ccclean/config.json` (persistent),
+3. the built-in fallback `10k`.
+
+```bash
+CCCLEAN_FREE=300k ccclaude --resume <id>   # one-off, unload an overflowing session
+```
+
 ```json
-// ~/.config/ccclean/config.json — поменять дефолт раз и навсегда
+// ~/.config/ccclean/config.json — change the default once and for all
 { "default_free": "30k" }
 ```
 
-**Ограничения:**
-- Работает **в терминале**, не внутри VS Code (хук завершает процесс `claude`;
-  у VS Code другая модель процессов).
-- Если сессия у самого потолка, маленький срез (10k) может не вывести из лимита
-  за один цикл — увеличь `CCCLEAN_FREE` для разовой разгрузки.
+**Limitations:**
 
-### Проактивный режим (`clean_at`) — чистка ДО блокировки
+- Works **in a terminal**, not inside VS Code (the hook ends the `claude`
+  process; VS Code has a different process model).
+- If the session is right at the ceiling, a small cut (`10k`) may not get it out
+  of the limit in a single cycle — increase `CCCLEAN_FREE` for a one-off unload.
 
-Чтобы вообще не упираться в «context limit reached», есть второй хук — на событие
-`Stop` (после каждого ответа). Он читает текущий `usage` из транскрипта, и если он
-выше порога **`clean_at`** (ключ в `config.json`, напр. `"940k"`), заранее
-запускает тот же цикл чистки (kill → `ccclean` → restart) — пока ещё под лимитом.
-Так блок не наступает вовсе. Режим включается наличием `clean_at` в конфиге.
+### Proactive mode (`clean_at`)
 
-### Автопродолжение после чистки (`resume_prompt`)
+So you never hit "context limit reached" at all, there's a second hook — on the
+`Stop` event (after every response). It reads the current `usage` from the
+transcript, and if it's above the **`clean_at`** threshold (a key in
+`config.json`, e.g. `"940k"`), it runs the same cleanup cycle (kill → `ccclean` →
+restart) ahead of time — while still under the limit. That way the block never
+happens. The mode is enabled by the presence of `clean_at` in the config.
 
-После перезапуска обёртка не просто открывает сессию, а **сразу отправляет в неё
-промпт** — чтобы работа продолжилась без твоего участия:
+### Auto-continue (`resume_prompt`)
+
+After the restart the wrapper doesn't just open the session — it **immediately
+sends a prompt into it** so work continues without your involvement:
 
 ```bash
-claude --resume <id> "continue"     # claude шлёт промпт сразу при старте
+claude --resume <id> "continue"     # claude sends the prompt right at startup
 ```
 
-Текст задаётся ключом **`resume_prompt`** в `config.json` (по умолчанию
+The text is set by the **`resume_prompt`** key in `config.json` (default
 `"continue"`):
 
 ```json
-{ "resume_prompt": "продолжай с того места где остановился" }
+{ "resume_prompt": "continue from where you left off" }
 ```
 
-Пустая строка (`""`) → просто возобновление без автоотправки.
+An empty string (`""`) → just resume, with no auto-send.
 
-### Безопасность хуков
+### Hook safety
 
-Хуки `Stop`/`PreCompact` **завершают процесс `claude`**, поэтому действуют ТОЛЬКО
-в сессиях, запущенных через обёртку `ccclaude` (она ставит `CCCLEAN_WRAPPED=1`).
-В обычных сессиях (`claude`, VS Code) хуки — no-op, ничего не трогают.
-
----
-
-## Как это работает
-
-1. Находит файл сессии (по id или через интерактивный выбор).
-2. Восстанавливает **активную ветку** диалога — цепочку от последнего сообщения
-   назад по `parentUuid` к корню (именно она грузится в контекст).
-3. Считает токены (Anthropic API — точно; `--fast` — tiktoken).
-4. Находит точку реза по нужному объёму, выравнивая её на границу сообщения
-   пользователя (срежет не меньше запрошенного).
-5. Спрашивает подтверждение (и с флагом `--summary` — краткое резюме удаляемого через DeepSeek).
-6. Создаёт бэкап `*.jsonl.bak-<дата>`, удаляет старые сообщения, переподшивает корень.
-7. Проверяет целостность результата.
+The `Stop` / `PreCompact` hooks **end the `claude` process**, so they only act in
+sessions launched through the `ccclaude` wrapper (which sets `CCCLEAN_WRAPPED=1`).
+In ordinary sessions (`claude`, VS Code) the hooks are a no-op and touch nothing.
 
 ---
 
-## Для AI-агентов
+## How it works
 
-Если эту утилиту запускает агент (а не человек) — учитывай:
+1. Finds the session file (by id or through the interactive picker).
+2. Reconstructs the **active branch** of the dialog — the chain from the last
+   message back along `parentUuid` to the root (this is exactly what gets loaded
+   into context).
+3. Counts tokens (Anthropic API — exact; `--fast` — tiktoken).
+4. Finds the cut point for the requested amount, aligning it to a user-message
+   boundary (it cuts no less than requested).
+5. Asks for confirmation (and with `--summary`, a short summary of the removed
+   chunk via DeepSeek).
+6. Creates a backup `*.jsonl.bak-<date>`, deletes the old messages, re-stitches
+   the root.
+7. Verifies the integrity of the result.
 
-- **Неинтерактивный режим:** `-y` (без подтверждений), `--fast` (без сети,
-  офлайн-подсчёт). Резюме через DeepSeek по умолчанию ВЫКЛЮЧЕНО — включается
-  флагом `--summary`. Сессию **обязательно** указывай явным `session-id` — без
-  него запустится интерактивный выбор и зависнет.
+---
+
+## For AI agents
+
+If an agent (rather than a human) runs this tool, keep in mind:
+
+- **Non-interactive mode:** `-y` (no confirmations), `--fast` (no network,
+  offline counting). The DeepSeek summary is OFF by default — enable it with
+  `--summary`. You **must** specify the session with an explicit `session-id` —
+  without it the interactive picker launches and hangs.
   ```bash
   ccclean <session-id> 50k --fast -y
   ```
-- **Предпросмотр без изменений:** `--dry-run` — печатает план («освободится ≈ X»,
-  «останется ≈ Y») и выходит, ничего не трогая. Удобно для оценки.
-- **Гарантия:** фактически срезается **не меньше** запрошенного объёма; число
-  «освободится ≈» в выводе точно соответствует реальному удалению.
-- **Только активная ветка:** утилита трогает лишь текущую линейную цепочку
-  диалога. Системный промпт, схемы инструментов, MCP и `CLAUDE.md` в контекст
-  входят, но обрезкой **не убираются** (они не в `.jsonl`).
-- **Безопасность по умолчанию:** всегда создаётся бэкап (отключается `--no-backup`).
-  Откат — копированием `*.jsonl.bak-*` поверх `*.jsonl`.
-- ⚠️ **Запускать только при ЗАКРЫТОЙ** целевой сессии: открытый процесс Claude
-  Code перезапишет файл из памяти и затрёт правки. Утилита проверяет это через
-  `lsof` и **откажется** резать открытую сессию (обход — `--force`).
+- **Preview without changes:** `--dry-run` — prints the plan ("will free ≈ X",
+  "will keep ≈ Y") and exits without touching anything. Handy for estimation.
+- **Guarantee:** it actually trims **no less** than the requested amount; the
+  "will free ≈" number in the output matches the real deletion exactly.
+- **Active branch only:** the tool touches only the current linear chain of the
+  dialog. The system prompt, tool schemas, MCP, and `CLAUDE.md` are part of the
+  context but are **not** removed by trimming (they aren't in the `.jsonl`).
+- **Safe by default:** a backup is always created (disable with `--no-backup`).
+  To roll back, copy `*.jsonl.bak-*` over `*.jsonl`.
+- ⚠️ **Run only when the target session is CLOSED:** an open Claude Code process
+  will rewrite the file from memory and overwrite your changes. The tool checks
+  this via `lsof` and will **refuse** to trim an open session (override with
+  `--force`).
 
 ---
 
-## Важно
+## Caveats
 
-- **Запускай только при закрытой** очищаемой сессии (проверяется через `lsof`;
-  открытую сессию утилита резать откажется, обход — `--force`).
-- Перед каждой резкой автоматически создаётся бэкап рядом с файлом сессии.
-- Подсчёт токенов через `tiktoken` (`--fast`) приблизительный (на кириллице
-  занижает); для точных чисел используй режим по умолчанию (Anthropic API).
+- **Run only when the session being cleaned is closed** (checked via `lsof`; the
+  tool refuses to trim an open session, override with `--force`).
+- A backup is created automatically next to the session file before every cut.
+- Token counting via `tiktoken` (`--fast`) is approximate (it under-counts on
+  Cyrillic); for exact numbers use the default mode (Anthropic API).
 
 ---
 
-## Лицензия
+## License
 
 [MIT](LICENSE) © [Glym143](https://github.com/Glym143)
